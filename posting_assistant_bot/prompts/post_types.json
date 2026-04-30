@@ -1,0 +1,77 @@
+{
+  "post_types": [
+    {
+      "id": "educational_short",
+      "label": "Короткий обучающий пост",
+      "enabled": true,
+      "priority": 10,
+      "prompt_hint": "Объясни один термин или идею простыми словами."
+    },
+    {
+      "id": "practical_insight",
+      "label": "Практический инсайт",
+      "enabled": true,
+      "priority": 20,
+      "prompt_hint": "Сфокусируй тему на практическом выводе из реального опыта."
+    },
+    {
+      "id": "road_update",
+      "label": "Road update",
+      "enabled": true,
+      "priority": 30,
+      "prompt_hint": "Тема про прогресс, ограничения и решения в процессе обучения."
+    },
+    {
+      "id": "tool_note",
+      "label": "Инструменты и автоматизации",
+      "enabled": true,
+      "priority": 40,
+      "prompt_hint": "Тема о применении инструментов/автоматизаций в ML-процессе."
+    },
+    {
+      "id": "debug_case",
+      "label": "Разбор ошибки",
+      "enabled": true,
+      "priority": 50,
+      "prompt_hint": "Тема, где есть ошибка, диагностика и исправление."
+    },
+    {
+      "id": "data_focus",
+      "label": "Данные и preprocessing",
+      "enabled": true,
+      "priority": 60,
+      "prompt_hint": "Тема про качество данных, фичи или preprocessing."
+    },
+    {
+      "id": "metric_focus",
+      "label": "Метрики и оценка",
+      "enabled": true,
+      "priority": 70,
+      "prompt_hint": "Тема про выбор метрик и интерпретацию качества модели."
+    },
+    {
+      "id": "system_design",
+      "label": "ML/LLM система",
+      "enabled": true,
+      "priority": 80,
+      "prompt_hint": "Тема про архитектуру агента, пайплайн или интеграцию."
+    },
+    {
+      "id": "interview_question",
+      "label": "Вопрос с собеседования",
+      "enabled": true,
+      "priority": 90,
+      "prompt_hint": "Сформулируй тему как вопрос для ML-собеседования."
+    }
+  ],
+  "layout": {
+    "buttons_per_row": 3,
+    "topic_count": 9,
+    "candidate_count": 20
+  },
+  "diversity": {
+    "similarity_threshold": 0.72,
+    "exploration_ratio": 0.3,
+    "recent_window": 100
+  }
+}

@@ -1,0 +1,11 @@
+#ml_base
+#notion
+#practice
+#ai_tools
+#road_update
+#python
+#llm
+#obsidian
+#claude
+#rl
+#off_topic

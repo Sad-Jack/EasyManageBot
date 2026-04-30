@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "posting-assistant-bot"
+version = "0.1.0"
+description = "Telegram bot and orchestration backend for Posting Assistant Bot."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "aiohttp>=3.11.18,<4",
+  "av>=16.0.1,<17",
+  "mlx-whisper>=0.4.3,<0.5",
+  "python-dotenv>=1.0.1,<2",
+  "python-telegram-bot>=22.0,<23",
+]
+
+[project.scripts]
+posting-assistant-bot = "posting_assistant_bot.main:main"
+
+[tool.setuptools.packages.find]
+include = ["posting_assistant_bot*"]
