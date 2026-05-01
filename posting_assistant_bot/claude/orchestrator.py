@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from posting_assistant_bot.application.ports import PostFormat
-from posting_assistant_bot.claude.client import ClaudeCodeClient, ClaudeCodeClientOptions
+from posting_assistant_bot.claude.client import ClaudeCodeClient, ClaudeCodeClientOptions, ClaudeStructuredResponse
 from posting_assistant_bot.config import AppConfig
 from posting_assistant_bot.logging_utils import log_event
 from posting_assistant_bot.obsidian.vault import ObsidianVault
@@ -49,20 +49,21 @@ class GeneratedPost:
 
 @dataclass(frozen=True)
 class SuggestedTopics:
-    topics: tuple[str, str, str, str]
+    topics: tuple[str, ...]
 
 
 class PostingAssistantOrchestrator:
     def __init__(self, config: AppConfig, vault: ObsidianVault) -> None:
         self._config = config
         self._vault = vault
-        self._client = ClaudeCodeClient(
-            ClaudeCodeClientOptions(
-                cwd=str(Path.cwd()),
-                model=config.claude_code_model,
-                add_dirs=[config.obsidian_vault_path] if config.obsidian_vault_path else [],
-            )
+        options = ClaudeCodeClientOptions(
+            cwd=str(Path.cwd()),
+            model=config.claude_code_model,
+            add_dirs=[config.obsidian_vault_path] if config.obsidian_vault_path else [],
         )
+        self._post_client = ClaudeCodeClient(options)
+        self._topic_client = ClaudeCodeClient(options)
+        self._comment_client = ClaudeCodeClient(options)
 
     async def generate_post(
         self,
@@ -110,13 +111,18 @@ class PostingAssistantOrchestrator:
         post_type_hints: tuple[str, ...] | None = None,
     ) -> SuggestedTopics:
         started_at = time.perf_counter()
+        request_count = 0
         log_event(
             logging.getLogger(__name__),
             level=logging.INFO,
             component="claude.topic",
             event="topic_generation_started",
             message="Claude topic generation started",
-            context={"model": self._config.claude_code_model},
+            context={
+                "topic_model": self._config.topic_generation_model,
+                "fallback_model": self._config.claude_code_model,
+                "desired_count": desired_count,
+            },
         )
         if post_format == "interview_question":
             format_block = "\n".join(
@@ -145,20 +151,20 @@ class PostingAssistantOrchestrator:
             if history_context
             else "\n\nИстория тем пока пустая."
         )
+        prompt_text = (
+            f"Предложи ровно {desired_count} тем для следующего поста Posting Assistant. "
+            "Темы должны быть короткими, практичными и в стиле Telegram.\n"
+            "Пиши только в нейтральном образовательном стиле. "
+            "Запрещены first-person и дневниковые формулировки: "
+            "`я`, `мой`, `мы`, `на этой неделе`, `мой путь`, `честный срез`, `что я сделал`.\n"
+            f"Ограничитель тем:\n{self._config.themes_prompt}\n\n"
+            f"{format_block}"
+            f"{post_types_block}"
+            f"{history_block}"
+        )
+        response: ClaudeStructuredResponse
         try:
-            raw = await self._client.prompt_structured(
-                system_prompt=self._config.role_prompt,
-                prompt=(
-                    f"Предложи ровно {desired_count} тем для следующего поста Posting Assistant. "
-                    "Темы должны быть короткими, практичными и в стиле Telegram.\n"
-                    f"Ограничитель тем:\n{self._config.themes_prompt}\n\n"
-                    f"{format_block}"
-                    f"{post_types_block}"
-                    f"{history_block}"
-                ),
-                schema=TOPIC_SCHEMA,
-                max_turns=3,
-            )
+            response, request_count = await self._topic_single_call(prompt_text=prompt_text, desired_count=desired_count)
         except Exception as exc:
             log_event(
                 logging.getLogger(__name__),
@@ -167,8 +173,10 @@ class PostingAssistantOrchestrator:
                 event="topic_generation_failed",
                 message="Claude topic generation failed",
                 context={
-                    "model": self._config.claude_code_model,
+                    "topic_model": self._config.topic_generation_model,
+                    "fallback_model": self._config.claude_code_model,
                     "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                    "request_count": request_count,
                     "error_type": type(exc).__name__,
                     "error_message": str(exc),
                 },
@@ -176,7 +184,7 @@ class PostingAssistantOrchestrator:
             )
             raise
 
-        raw_topics = raw.get("topics", [])
+        raw_topics = response.structured_output.get("topics", [])
         topics = [str(item).strip() for item in raw_topics if str(item).strip()]
         if len(topics) != desired_count:
             raise ValueError(f"Claude must return exactly {desired_count} topics.")
@@ -188,9 +196,15 @@ class PostingAssistantOrchestrator:
             event="topic_generation_completed",
             message="Claude topic generation completed",
             context={
-                "model": self._config.claude_code_model,
+                "model": response.model,
                 "topics_count": len(topics),
                 "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                "request_count": request_count,
+                "input_tokens": response.input_tokens,
+                "output_tokens": response.output_tokens,
+                "total_cost_usd": response.total_cost_usd,
+                "prompt_chars": len(prompt_text),
+                "output_chars": len("\n".join(topics)),
             },
         )
         return SuggestedTopics(topics=tuple(topics))
@@ -206,7 +220,7 @@ class PostingAssistantOrchestrator:
             context={"model": self._config.claude_code_model, "comment_length": len(comment_text)},
         )
         try:
-            raw = await self._client.prompt_structured(
+            raw = await self._comment_client.prompt_structured(
                 system_prompt=self._config.role_prompt,
                 prompt="\n".join(
                     [
@@ -328,7 +342,7 @@ class PostingAssistantOrchestrator:
                 ]
             )
         try:
-            raw = await self._client.prompt_structured(
+            raw = await self._post_client.prompt_structured(
                 system_prompt=self._config.role_prompt,
                 prompt="\n".join(prompt_lines),
                 schema=POST_SCHEMA,
@@ -386,7 +400,7 @@ class PostingAssistantOrchestrator:
                 ]
             )
         prompt_lines.extend(["", post_text])
-        raw = await self._client.prompt_structured(
+        raw = await self._post_client.prompt_structured(
             system_prompt=self._config.role_prompt,
             prompt="\n".join(prompt_lines),
             schema=POST_SCHEMA,
@@ -411,6 +425,50 @@ class PostingAssistantOrchestrator:
             return ""
 
         return "\n".join(f"- {item.path}: {item.snippet}" for item in found)
+
+    async def _topic_single_call(self, *, prompt_text: str, desired_count: int) -> tuple[ClaudeStructuredResponse, int]:
+        request_count = 0
+        last_error: Exception | None = None
+        topic_max_turns = max(1, self._config.topic_generation_max_turns)
+        retry_limit = max(0, self._config.topic_generation_retry_limit)
+        primary_attempts = retry_limit + 1
+
+        for _ in range(primary_attempts):
+            request_count += 1
+            try:
+                response = await self._topic_client.prompt_structured_with_meta(
+                    system_prompt=self._config.role_prompt,
+                    prompt=prompt_text,
+                    schema=TOPIC_SCHEMA,
+                    max_turns=topic_max_turns,
+                    model=self._config.topic_generation_model,
+                )
+                topics = [str(item).strip() for item in response.structured_output.get("topics", []) if str(item).strip()]
+                if len(topics) != desired_count:
+                    raise ValueError(f"Fast model returned {len(topics)} topics, expected {desired_count}")
+                return response, request_count
+            except Exception as exc:
+                last_error = exc
+
+        if self._config.topic_generation_model == self._config.claude_code_model:
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError("Topic generation failed on primary model without fallback")
+
+        request_count += 1
+        fallback = await self._topic_client.prompt_structured_with_meta(
+            system_prompt=self._config.role_prompt,
+            prompt=prompt_text,
+            schema=TOPIC_SCHEMA,
+            max_turns=topic_max_turns,
+            model=self._config.claude_code_model,
+        )
+        topics = [str(item).strip() for item in fallback.structured_output.get("topics", []) if str(item).strip()]
+        if len(topics) != desired_count:
+            if last_error is not None:
+                raise last_error
+            raise ValueError(f"Fallback model returned {len(topics)} topics, expected {desired_count}")
+        return fallback, request_count
 
 
 _INTERVIEW_TOPIC_POOL: tuple[str, ...] = (

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import logging
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -54,6 +55,9 @@ class AppConfig:
     node_env: str
     telegram_bot_token: str
     claude_code_model: str
+    topic_generation_model: str
+    topic_generation_max_turns: int
+    topic_generation_retry_limit: int
     bot_mode: str
     telegram_webhook_base_url: str | None
     telegram_webhook_path: str
@@ -97,6 +101,9 @@ def load_config() -> AppConfig:
 
     telegram_bot_token = _get_required_env("TELEGRAM_BOT_TOKEN")
     claude_code_model = _get_first_env(("ANTHROPIC_MODEL", "CLAUDE_CODE_MODEL"), "sonnet")
+    topic_generation_model = _get_env("TOPIC_GENERATION_MODEL", "haiku")
+    topic_generation_max_turns = _get_positive_int("TOPIC_GENERATION_MAX_TURNS", 4)
+    topic_generation_retry_limit = _get_positive_int("TOPIC_GENERATION_RETRY_LIMIT", 1)
 
     bot_mode = _get_env("BOT_MODE", "polling")
     if bot_mode not in {"polling", "webhook"}:
@@ -168,6 +175,9 @@ def load_config() -> AppConfig:
         node_env=node_env,
         telegram_bot_token=telegram_bot_token,
         claude_code_model=claude_code_model,
+        topic_generation_model=topic_generation_model,
+        topic_generation_max_turns=topic_generation_max_turns,
+        topic_generation_retry_limit=topic_generation_retry_limit,
         bot_mode=bot_mode,
         telegram_webhook_base_url=telegram_webhook_base_url,
         telegram_webhook_path=telegram_webhook_path,
@@ -305,6 +315,8 @@ def _normalize_target_chat_id(value: str) -> str:
         username = parts[0].strip() if parts else ""
         if username and not username.startswith("+"):
             return f"@{username.lstrip('@')}"
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{3,31}", normalized):
+        return f"@{normalized}"
     return normalized
 
 

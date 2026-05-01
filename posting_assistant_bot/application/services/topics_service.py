@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
+import re
 from typing import Literal
 
 from posting_assistant_bot.application.ports import (
@@ -12,6 +14,7 @@ from posting_assistant_bot.application.ports import (
     TopicRepositoryPort,
 )
 from posting_assistant_bot.config import AppConfig, PostTypeConfig
+from posting_assistant_bot.logging_utils import log_event
 from posting_assistant_bot.topic_memory import (
     build_history_context,
     build_topic_memory_payload,
@@ -65,8 +68,9 @@ class TopicsService:
             desired_count=max(topic_count, candidate_count),
             post_type_hints=type_hints,
         )
+        neutral_candidates = self._filter_neutral_topics(list(suggested.topics))
         filtered = filter_duplicate_topics(
-            list(suggested.topics),
+            neutral_candidates,
             memory,
             limit=max(topic_count, candidate_count),
             threshold=similarity_threshold,
@@ -305,3 +309,76 @@ class TopicsService:
             limit=self._config.topic_layout.topic_count,
             threshold=threshold,
         )[len(existing) :]
+
+    def _filter_neutral_topics(self, candidates: list[str]) -> list[str]:
+        accepted: list[str] = []
+        rejected: list[dict[str, str]] = []
+        for raw in candidates:
+            candidate = raw.strip()
+            if not candidate:
+                continue
+            rewritten = self._rewrite_personal_to_neutral(candidate)
+            reason = self._neutral_style_reject_reason(rewritten)
+            if reason:
+                rejected.append({"topic": candidate, "reason": reason})
+                continue
+            accepted.append(rewritten)
+
+        if rejected:
+            log_event(
+                logging.getLogger(__name__),
+                level=logging.INFO,
+                component="topic.policy",
+                event="generated_topic_rejected_by_style",
+                message="Rejected generated topics by neutral style policy",
+                context={"rejected_count": len(rejected), "rejected": rejected},
+            )
+        return accepted
+
+    def _neutral_style_reject_reason(self, topic: str) -> str | None:
+        lower = normalize_topic_text(topic)
+        for pattern, reason in _PERSONAL_STYLE_PATTERNS:
+            if pattern.search(lower):
+                return reason
+        if not _NEUTRAL_START_PATTERN.search(lower):
+            return "missing_neutral_educational_pattern"
+        return None
+
+    @staticmethod
+    def _rewrite_personal_to_neutral(topic: str) -> str:
+        rewritten = topic.strip()
+        replacements = (
+            (r"(?i)\bпочему я\b", "Почему"),
+            (r"(?i)\bгде я\b", "Где"),
+            (r"(?i)\bкак выглядит мой\b", "Как выглядит"),
+            (r"(?i)\bмой путь\b", "путь развития в ML"),
+            (r"(?i)\bна этой неделе\b", ""),
+            (r"(?i)\bчто я сделал\b", "что было сделано"),
+            (r"(?i)\bчестный срез\b", "разбор текущего состояния"),
+            (r"(?i)\bя перестал\b", "почему отказ от"),
+            (r"(?i)\bмой\b", ""),
+            (r"(?i)\bмы\b", ""),
+            (r"(?i)\bя\b", ""),
+        )
+        for pattern, replacement in replacements:
+            rewritten = re.sub(pattern, replacement, rewritten)
+        rewritten = re.sub(r"\s+", " ", rewritten).strip(" .,-")
+        if rewritten:
+            rewritten = rewritten[0].upper() + rewritten[1:]
+        return rewritten
+
+
+_PERSONAL_STYLE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(^|\s)я($|\s)"), "contains_first_person_ya"),
+    (re.compile(r"\bмой\b|\bмоя\b|\bмоё\b|\bмои\b"), "contains_possessive_moi"),
+    (re.compile(r"(^|\s)мы($|\s)"), "contains_first_person_we"),
+    (re.compile(r"\bна этой неделе\b"), "contains_time_diary_marker"),
+    (re.compile(r"\bмой путь\b"), "contains_personal_journey"),
+    (re.compile(r"\bчестный срез\b"), "contains_diary_marker"),
+    (re.compile(r"\bчто я сделал\b"), "contains_personal_action_marker"),
+)
+
+_NEUTRAL_START_PATTERN = re.compile(
+    r"^(что|чем|как|почему|когда|зачем|где|какие|какой|можно ли|стоит ли)\b",
+    re.IGNORECASE,
+)

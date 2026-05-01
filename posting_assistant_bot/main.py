@@ -86,6 +86,7 @@ class PostingAssistantBotRuntime:
                 "mode": self._config.bot_mode,
                 "target_chat_id": self._config.target_chat_id,
                 "target_chat_id_source": self._config.target_chat_id_source,
+                "topic_generation_model": self._config.topic_generation_model,
                 "publish_ready": self._publish_ready,
                 "publish_not_ready_reason": self._publish_not_ready_reason,
                 "owner_telegram_id": self._config.owner_telegram_id,
@@ -286,6 +287,7 @@ class PostingAssistantBotRuntime:
         summary = "\n".join(
             [
                 f"Model: {self._config.claude_code_model}",
+                f"Topic model: {self._config.topic_generation_model}",
                 f"Owner lock: enabled ({self._config.owner_telegram_id})",
                 f"Target chat: {self._config.target_chat_id}",
                 f"Target chat source: {self._config.target_chat_id_source}",
@@ -912,6 +914,7 @@ class PostingAssistantBotRuntime:
                 return
 
             if action == "reopen":
+                await self._answer_callback(query, "Перегенерирую...")
                 log_event(
                     LOGGER,
                     level=logging.INFO,
@@ -920,7 +923,7 @@ class PostingAssistantBotRuntime:
                     message="Reopen clicked",
                     context={"post_id": post.id},
                 )
-                await self._reopen_pending_post(query, post)
+                await self._reopen_pending_post(query, post, callback_acknowledged=True)
                 return
 
             await query.answer("Неизвестное действие.")
@@ -939,7 +942,7 @@ class PostingAssistantBotRuntime:
                 },
                 exc_info=exc,
             )
-            await query.answer(self._map_runtime_error_to_user_message(exc), show_alert=True)
+            await self._answer_callback(query, self._map_runtime_error_to_user_message(exc), show_alert=True)
 
     async def _handle_topic_callback(self, query, action: str, topic_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
         topic = self._topics_service.get_topic(topic_id)
@@ -1350,12 +1353,12 @@ class PostingAssistantBotRuntime:
                 "post_url_available": bool(post_url),
             },
         )
-        await query.answer(self._ui.approve_success)
+        await self._answer_callback(query, self._ui.approve_success)
 
-    async def _reopen_pending_post(self, query, post: PendingPost) -> None:
+    async def _reopen_pending_post(self, query, post: PendingPost, *, callback_acknowledged: bool = False) -> None:
         updated = await self._posting_service.reopen_pending_post(post.id, style_prompt=self._config.style_prompt)
         if updated is None:
-            await query.answer("Пост не найден.", show_alert=True)
+            await self._answer_callback(query, "Пост не найден.", show_alert=True)
             return
         if query.message is not None:
             await query.message.edit_text(
@@ -1374,7 +1377,31 @@ class PostingAssistantBotRuntime:
                 "chat_id": updated.owner_chat_id,
             },
         )
-        await query.answer("Новый вариант готов")
+        if not callback_acknowledged:
+            await self._answer_callback(query, "Новый вариант готов")
+
+    async def _answer_callback(self, query, text: str | None = None, *, show_alert: bool = False) -> None:
+        try:
+            if text is None:
+                await query.answer()
+            else:
+                await query.answer(text, show_alert=show_alert)
+        except BadRequest as exc:
+            lowered = str(exc).lower()
+            if "query is too old" in lowered or "query id is invalid" in lowered:
+                log_event(
+                    LOGGER,
+                    level=logging.WARNING,
+                    component="telegram.callback",
+                    event="callback_answer_skipped_expired",
+                    message="Callback answer skipped because query expired",
+                    context={
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc),
+                    },
+                )
+                return
+            raise
 
     async def _handle_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         error = context.error
@@ -1730,6 +1757,7 @@ def main() -> None:
             "target_chat_id": config.target_chat_id,
             "target_chat_id_source": config.target_chat_id_source,
             "owner_telegram_id": config.owner_telegram_id,
+            "topic_generation_model": config.topic_generation_model,
             "transcription_model": config.local_transcribe_model,
             "transcription_enabled": config.voice_transcription_enabled,
             "transcription_provider": config.voice_transcription_provider,

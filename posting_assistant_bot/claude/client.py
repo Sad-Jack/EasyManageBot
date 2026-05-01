@@ -14,6 +14,15 @@ class ClaudeCodeClientOptions:
     add_dirs: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ClaudeStructuredResponse:
+    structured_output: Any
+    model: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_cost_usd: float | None = None
+
+
 class ClaudeCodeClient:
     def __init__(self, options: ClaudeCodeClientOptions) -> None:
         self._options = options
@@ -25,7 +34,26 @@ class ClaudeCodeClient:
         prompt: str,
         schema: dict[str, Any],
         max_turns: int = 4,
+        model: str | None = None,
     ) -> Any:
+        response = await self.prompt_structured_with_meta(
+            system_prompt=system_prompt,
+            prompt=prompt,
+            schema=schema,
+            max_turns=max_turns,
+            model=model,
+        )
+        return response.structured_output
+
+    async def prompt_structured_with_meta(
+        self,
+        *,
+        system_prompt: str,
+        prompt: str,
+        schema: dict[str, Any],
+        max_turns: int = 4,
+        model: str | None = None,
+    ) -> ClaudeStructuredResponse:
         args = [
             "-p",
             prompt,
@@ -34,7 +62,7 @@ class ClaudeCodeClient:
             "--json-schema",
             json.dumps(schema, ensure_ascii=False),
             "--model",
-            self._options.model,
+            model or self._options.model,
             "--allowedTools",
             "",
             "--permission-mode",
@@ -76,7 +104,19 @@ class ClaudeCodeClient:
             result = parsed.get("result") or "Claude Code returned no structured output"
             raise RuntimeError(str(result))
 
-        return structured_output
+        usage = parsed.get("usage", {}) if isinstance(parsed, dict) else {}
+        if not isinstance(usage, dict):
+            usage = {}
+        input_tokens = _as_int(usage.get("input_tokens") or usage.get("prompt_tokens"))
+        output_tokens = _as_int(usage.get("output_tokens") or usage.get("completion_tokens"))
+        total_cost_usd = _as_float(parsed.get("total_cost_usd")) if isinstance(parsed, dict) else None
+        return ClaudeStructuredResponse(
+            structured_output=structured_output,
+            model=str(parsed.get("model") or (model or self._options.model)),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_cost_usd=total_cost_usd,
+        )
 
 
 def _normalize_claude_error(stdout: str, stderr: str) -> RuntimeError:
@@ -91,3 +131,21 @@ def _normalize_claude_error(stdout: str, stderr: str) -> RuntimeError:
         combined = "Claude Code execution failed"
 
     return RuntimeError(combined)
+
+
+def _as_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _as_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
