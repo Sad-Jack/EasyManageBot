@@ -148,6 +148,11 @@ class PendingPostRepositoryPort(Protocol):
         ...
 
 
+class ChatHistoryRepositoryPort(Protocol):
+    def clear_chat_history(self, chat_id: str) -> None:
+        ...
+
+
 class TopicRepositoryPort(Protocol):
     def create_suggested_topic(
         self,

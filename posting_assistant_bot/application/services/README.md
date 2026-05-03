@@ -1,28 +1,15 @@
 # Application Services
 
-Этот каталог содержит use-case оркестрацию и бизнес-правила уровня приложения.
+Сервисы в этом каталоге — слой use-case оркестрации.
 
-## Границы сервисов
-- `posting_service.py`:
-  - генерация поста через LLM-порт;
-  - сохранение pending-поста;
-  - переходы pending-поста (attach preview, publish, delete).
-- `topics_service.py`:
-  - предложение/регенерация темы;
-  - подготовка данных для генерации поста из темы;
-  - статусные переходы темы.
-- `comments_service.py`:
-  - создание состояния комментария для owner-нотификации;
-  - генерация ответа на комментарий;
-  - переходы статусов комментария (ignored/failed/sent и т.д.).
+## Сервисы
+- `posting_service.py` — генерация/перегенерация и lifecycle pending-постов.
+- `topics_service.py` — генерация тем и подготовка данных для поста по теме.
+- `comments_service.py` — review-flow комментариев и статусы отправки reply.
+- `runtime_read_model_service.py` — read-модель для runtime handlers (`status/reset/queue`) без прямого доступа из transport к БД.
 
-## Что должно попадать в сервисы
-- orchestration use-case;
-- бизнес-переходы статусов;
-- подготовка данных между шагами сценария.
-
-## Что не должно попадать в сервисы
-- Telegram transport (send/edit/delete/update handlers);
-- bootstrap/wiring приложения;
-- детали polling/webhook запуска;
-- SQL-схема и миграции.
+## Границы
+- Здесь не должно быть Telegram transport кода.
+- Здесь не должно быть bootstrap/polling/webhook кода.
+- Здесь не должно быть SQL schema/migration деталей.
+- Инфраструктура должна использоваться через порты из `application/ports.py`.

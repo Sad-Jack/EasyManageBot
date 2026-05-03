@@ -10,7 +10,5 @@ __pycache__
 .pytest_cache
 .venv
 *.egg-info
-документы/задания/
-документы/баги/
-
+tmp/
 документы/

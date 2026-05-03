@@ -5,13 +5,19 @@
       "label": "Короткий обучающий пост",
       "enabled": true,
       "priority": 10,
-      "prompt_hint": "Объясни один термин или идею простыми словами."
+      "core": true,
+      "style_mode": "educational_short",
+      "default_tags": ["#ml_base"],
+      "prompt_hint": "Объясни один ML/AI термин или идею простыми словами."
     },
     {
       "id": "practical_insight",
       "label": "Практический инсайт",
       "enabled": true,
       "priority": 20,
+      "core": true,
+      "style_mode": "practical_insight",
+      "default_tags": ["#practice"],
       "prompt_hint": "Сфокусируй тему на практическом выводе из реального опыта."
     },
     {
@@ -19,49 +25,70 @@
       "label": "Road update",
       "enabled": true,
       "priority": 30,
-      "prompt_hint": "Тема про прогресс, ограничения и решения в процессе обучения."
+      "core": true,
+      "style_mode": "road_update",
+      "default_tags": ["#road_update"],
+      "prompt_hint": "Покажи прогресс, ограничение, решение или следующий шаг проекта."
     },
     {
       "id": "tool_note",
       "label": "Инструменты и автоматизации",
       "enabled": true,
       "priority": 40,
-      "prompt_hint": "Тема о применении инструментов/автоматизаций в ML-процессе."
+      "core": false,
+      "style_mode": "practical_insight",
+      "default_tags": ["#ai_tools"],
+      "prompt_hint": "Покажи, как инструмент помогает учиться, работать или строить ML Road."
     },
     {
       "id": "debug_case",
       "label": "Разбор ошибки",
       "enabled": true,
       "priority": 50,
-      "prompt_hint": "Тема, где есть ошибка, диагностика и исправление."
+      "core": true,
+      "style_mode": "practical_insight",
+      "default_tags": ["#practice"],
+      "prompt_hint": "Разбери ошибку: что сломалось, как диагностировал, какой вывод сделал."
     },
     {
       "id": "data_focus",
       "label": "Данные и preprocessing",
       "enabled": true,
       "priority": 60,
-      "prompt_hint": "Тема про качество данных, фичи или preprocessing."
+      "core": true,
+      "style_mode": "educational_short",
+      "default_tags": ["#ml_base", "#practice"],
+      "prompt_hint": "Тема про данные, признаки, качество данных или preprocessing."
     },
     {
       "id": "metric_focus",
       "label": "Метрики и оценка",
       "enabled": true,
       "priority": 70,
-      "prompt_hint": "Тема про выбор метрик и интерпретацию качества модели."
+      "core": true,
+      "style_mode": "educational_short",
+      "default_tags": ["#ml_base"],
+      "prompt_hint": "Тема про выбор метрики, интерпретацию качества или ошибку оценки модели."
     },
     {
       "id": "system_design",
       "label": "ML/LLM система",
       "enabled": true,
       "priority": 80,
-      "prompt_hint": "Тема про архитектуру агента, пайплайн или интеграцию."
+      "core": false,
+      "style_mode": "practical_insight",
+      "default_tags": ["#llm", "#ai_tools"],
+      "prompt_hint": "Тема про архитектуру агента, пайплайн, интеграцию или автоматизацию."
     },
     {
       "id": "interview_question",
       "label": "Вопрос с собеседования",
       "enabled": true,
       "priority": 90,
-      "prompt_hint": "Сформулируй тему как вопрос для ML-собеседования."
+      "core": true,
+      "style_mode": "educational_short",
+      "default_tags": ["#ml_base"],
+      "prompt_hint": "Сформулируй тему как ML-вопрос с собеседования и дай простой разбор."
     }
   ],
   "layout": {

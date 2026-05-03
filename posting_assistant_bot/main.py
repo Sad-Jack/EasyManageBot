@@ -22,7 +22,7 @@ from telegram.ext import (
 )
 
 from posting_assistant_bot.application.ports import PendingPost, PostFormat
-from posting_assistant_bot.application.services import CommentsService, PostingService, TopicsService
+from posting_assistant_bot.application.services import CommentsService, PostingService, RuntimeReadModelService, TopicsService
 from posting_assistant_bot.claude.orchestrator import PostingAssistantOrchestrator
 from posting_assistant_bot.config import AppConfig, load_config
 from posting_assistant_bot.logging_utils import log_event, setup_logging
@@ -59,6 +59,11 @@ class PostingAssistantBotRuntime:
         )
         self._topics_service = TopicsService(topic_generator=self._orchestrator, topics=self._db, config=self._config)
         self._comments_service = CommentsService(comments=self._db, reply_generator=self._orchestrator)
+        self._runtime_read_model_service = RuntimeReadModelService(
+            pending_posts=self._db,
+            topics=self._db,
+            chat_history=self._db,
+        )
         self._transcriber = VoiceTranscriber(
             model=config.local_transcribe_model,
             enabled=config.voice_transcription_enabled,
@@ -268,7 +273,7 @@ class PostingAssistantBotRuntime:
         if chat is None:
             return
 
-        self._db.clear_chat_history(str(chat.id))
+        self._runtime_read_model_service.clear_chat_history(str(chat.id))
         await self._reply_text(update, "Служебная история этого чата очищена.")
 
     async def _handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -281,8 +286,8 @@ class PostingAssistantBotRuntime:
         pending_count = 0
         topic_memory_count = 0
         if chat is not None:
-            pending_count = len(self._db.list_pending_posts(str(chat.id), 50))
-        topic_memory_count = len(self._db.list_recent_topic_memory(limit=1000, status="ACTIVE"))
+            pending_count = self._runtime_read_model_service.pending_posts_count(str(chat.id), 50)
+        topic_memory_count = self._runtime_read_model_service.topic_memory_count(limit=1000)
 
         summary = "\n".join(
             [
@@ -324,7 +329,7 @@ class PostingAssistantBotRuntime:
         if chat is None or message is None:
             return
 
-        posts = self._db.list_pending_posts(str(chat.id), 10)
+        posts = self._runtime_read_model_service.list_pending_posts(str(chat.id), 10)
         if not posts:
             await message.reply_text("Неопубликованных постов пока нет.", disable_web_page_preview=True)
             return

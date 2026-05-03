@@ -1,11 +1,12 @@
 #ml_base
 #notion
+#stepik
 #practice
-#ai_tools
-#road_update
 #python
+#ai_tools
 #llm
+#agents
 #obsidian
 #claude
-#rl
-#off_topic
+#road_update
+#quiz
